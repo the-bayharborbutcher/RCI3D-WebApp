@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RCI3D - Professional 3D Printer Control</title>
+
+    <!-- ===================== PWA META TAGS ===================== -->
+    <meta name="description" content="Professional remote control for your 3D printers via OctoPrint">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="RCI3D">
+    <meta name="msapplication-TileColor" content="#667eea">
+    <meta name="msapplication-TileImage" content="icons/icon-144x144.png">
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-96x96.png">
+    <link rel="shortcut icon" href="icons/icon-96x96.png">
+
+    <!-- Apple Touch Icons (iOS) -->
+    <link rel="apple-touch-icon" href="icons/icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="72x72"   href="icons/icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="96x96"   href="icons/icon-96x96.png">
+    <link rel="apple-touch-icon" sizes="128x128" href="icons/icon-128x128.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="icons/icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192x192.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512x512.png">
+
+    <!-- Apple Splash Screens -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- =========================================================== -->
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Paho MQTT WebSocket client — REQUIS pour le live data -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
+    <!-- Chart.js — graphique températures -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+    // Fallback si Chart.js CDN principal échoue
+    if (typeof Chart === 'undefined') {
+        var s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js';
+        document.head.appendChild(s);
+    }
+    </script>
+
+    <!-- Firebase FIRST (before any other scripts) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
+
+    <!-- Firebase config SECOND -->
+    <script src="firebase-config.js"></script>
+</head>
+<body>
+
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-container">
+
+        <!-- Animated 3D Printer Nozzle (decorative, outside the box) -->
+        <div class="printer-scene" aria-hidden="true">
+            <svg class="printer-svg" viewBox="0 0 200 220" xmlns="http://www.w3.org/2000/svg">
+                <!-- Gantry arm -->
+                <rect class="printer-gantry" x="10" y="30" width="180" height="10" rx="5"/>
+                <!-- Carriage moving left-right -->
+                <g class="printer-carriage">
+                    <!-- Carriage body -->
+                    <rect x="-22" y="22" width="44" height="28" rx="6" fill="#667eea"/>
+                    <rect x="-18" y="26" width="36" height="20" rx="4" fill="#764ba2"/>
+                    <!-- Hotend block -->
+                    <rect x="-10" y="50" width="20" height="16" rx="3" fill="#4a5568"/>
+                    <!-- Nozzle -->
+                    <polygon points="-6,66 6,66 3,80 -3,80" fill="#2d3748"/>
+                    <circle cx="0" cy="80" r="3" fill="#e53e3e" class="nozzle-tip"/>
+                    <!-- Filament line coming from top -->
+                    <line x1="0" y1="0" x2="0" y2="26" stroke="#a0aec0" stroke-width="2.5" stroke-dasharray="4,3"/>
+                    <!-- Fan -->
+                    <circle cx="14" cy="36" r="7" fill="#5a67d8" opacity="0.8"/>
+                    <path d="M14,29 Q17,33 14,36 Q11,33 14,29Z" fill="white" opacity="0.6" class="fan-blade"/>
+                    <path d="M21,36 Q17,39 14,36 Q17,33 21,36Z" fill="white" opacity="0.6" class="fan-blade"/>
+                    <path d="M14,43 Q11,39 14,36 Q17,39 14,43Z" fill="white" opacity="0.6" class="fan-blade"/>
+                    <path d="M7,36 Q11,33 14,36 Q11,39 7,36Z" fill="white" opacity="0.6" class="fan-blade"/>
+                    <circle cx="14" cy="36" r="2" fill="#2b6cb0"/>
+                </g>
+                <!-- Extrusion line (filament being deposited) -->
+                <line class="extrusion-line" x1="100" y1="83" x2="100" y2="200" stroke="#667eea" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+                <!-- Print bed -->
+                <rect x="10" y="195" width="180" height="8" rx="4" fill="#e2e8f0"/>
+                <rect x="20" y="185" width="160" height="14" rx="3" fill="#cbd5e0" opacity="0.6"/>
+                <!-- Printed layers growing (animated) -->
+                <g class="print-layers">
+                    <rect x="55" y="180" width="90" height="5" rx="2" fill="#667eea" opacity="0.9"/>
+                    <rect x="60" y="173" width="80" height="5" rx="2" fill="#764ba2" opacity="0.8"/>
+                    <rect x="65" y="166" width="70" height="5" rx="2" fill="#667eea" opacity="0.7"/>
+                    <rect x="68" y="159" width="64" height="5" rx="2" fill="#764ba2" opacity="0.5"/>
+                </g>
+                <!-- Heat glow around nozzle tip -->
+                <circle class="heat-glow" cx="0" cy="80" r="8" fill="#e53e3e" opacity="0"/>
+            </svg>
+        </div>
+
+        <div class="login-box-wrapper">
+            <div class="login-box">
+            <div class="login-logo">
+                <img src="rci3dstudio.jpeg" alt="RCI3D Studio" onerror="this.style.display='none'; document.querySelector('.login-logo-fallback').style.display='block'">
+                <div class="login-logo-fallback" style="display:none;">
+                    <i class="fas fa-cube"></i>
+                    <h1>RCI3D</h1>
+                </div>
+            </div>
+            <p class="login-subtitle">Professional 3D Printer Control</p>
+
+            <!-- Google Button -->
+            <button class="btn-google" onclick="googleLogin()">
+                <svg width="18" height="18" viewBox="0 0 18 18" style="margin-right:10px;flex-shrink:0;">
+                    <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+                    <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
+                    <path fill="#FBBC05" d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/>
+                    <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z"/>
+                </svg>
+                Continuer avec Google
+            </button>
+
+            <div class="divider"><span>ou</span></div>
+
+            <!-- Email/Password Form -->
+            <form id="loginForm" class="auth-form active">
+                <div class="form-group">
+                    <label><i class="fas fa-envelope" style="margin-right:6px;color:#667eea;"></i>Email</label>
+                    <input type="email" id="loginEmail" placeholder="votre@email.com" required autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-lock" style="margin-right:6px;color:#667eea;"></i>Mot de passe</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="loginPassword" placeholder="••••••••" required autocomplete="current-password">
+                        <button type="button" class="toggle-pwd" onclick="togglePassword('loginPassword', this)" tabindex="-1">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div style="text-align:right;margin-top:-8px;margin-bottom:16px;">
+                    <a href="#" class="forgot-link" onclick="showForgotPassword(event)">Mot de passe oublié ?</a>
+                </div>
+                <button type="submit" class="btn-login">
+                    <i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter
+                </button>
+            </form>
+
+            <p class="signup-prompt">Pas encore de compte ? <a href="#" onclick="showSignupModal(event)">Créer un compte</a></p>
+        </div><!-- end login-box -->
+        </div><!-- end login-box-wrapper -->
+    </div>
+
+    <!-- Forgot Password Modal -->
+    <div id="forgotModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:16px;padding:32px 28px;width:100%;max-width:380px;margin:20px;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+            <h3 style="margin:0 0 8px;font-size:20px;color:#1a1a2e;"><i class="fas fa-key" style="color:#667eea;margin-right:8px;"></i>Réinitialiser le mot de passe</h3>
+            <p style="color:#666;font-size:14px;margin:0 0 20px;">Entrez votre email, vous recevrez un lien de réinitialisation.</p>
+            <input type="email" id="resetEmail" placeholder="votre@email.com" style="width:100%;padding:12px 14px;border:2px solid #e0e0e0;border-radius:10px;font-size:15px;box-sizing:border-box;outline:none;transition:border .2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+            <div style="display:flex;gap:10px;margin-top:18px;">
+                <button onclick="closeForgotModal()" style="flex:1;padding:12px;border:2px solid #e0e0e0;background:#fff;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;color:#666;">Annuler</button>
+                <button onclick="sendResetEmail()" style="flex:2;padding:12px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:14px;font-weight:700;">Envoyer le lien</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Signup Modal -->
+    <div id="signupModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:16px;padding:32px 28px;width:100%;max-width:380px;margin:20px;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+            <h3 style="margin:0 0 20px;font-size:20px;color:#1a1a2e;"><i class="fas fa-user-plus" style="color:#667eea;margin-right:8px;"></i>Créer un compte</h3>
+            <form id="signupForm" onsubmit="handleSignup(event)">
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:6px;">Nom complet</label>
+                    <input type="text" id="signupName" placeholder="John Doe" required style="width:100%;padding:12px 14px;border:2px solid #e0e0e0;border-radius:10px;font-size:15px;box-sizing:border-box;outline:none;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:6px;">Email</label>
+                    <input type="email" id="signupEmail" placeholder="votre@email.com" required style="width:100%;padding:12px 14px;border:2px solid #e0e0e0;border-radius:10px;font-size:15px;box-sizing:border-box;outline:none;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+                </div>
+                <div style="margin-bottom:20px;">
+                    <label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:6px;">Mot de passe</label>
+                    <input type="password" id="signupPassword" placeholder="Minimum 6 caractères" required style="width:100%;padding:12px 14px;border:2px solid #e0e0e0;border-radius:10px;font-size:15px;box-sizing:border-box;outline:none;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+                </div>
+                <div style="display:flex;gap:10px;">
+                    <button type="button" onclick="closeSignupModal()" style="flex:1;padding:12px;border:2px solid #e0e0e0;background:#fff;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;color:#666;">Annuler</button>
+                    <button type="submit" style="flex:2;padding:12px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:14px;font-weight:700;">Créer le compte</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="appContainer" class="app-container" style="display: none;">
+
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="logo">
+                <img src="rci3dlogo.png" alt="RCI3D" class="sidebar-logo-img"
+                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                <div class="sidebar-logo-fallback" style="display:none;align-items:center;gap:10px;">
+                    <i class="fas fa-cube"></i>
+                    <span>RCI3D</span>
+                </div>
+            </div>
+            <ul class="nav-links">
+                <li class="active" data-section="dashboard">
+                    <a href="#dashboard"><i class="fas fa-home"></i> Dashboard</a>
+                </li>
+                <li data-section="printers">
+                    <a href="#printers"><i class="fas fa-print"></i> Printers</a>
+                </li>
+                <li data-section="files">
+                    <a href="#files"><i class="fas fa-folder"></i> Files</a>
+                </li>
+                <li data-section="history">
+                    <a href="#history"><i class="fas fa-history"></i> History</a>
+                </li>
+                <li data-section="settings">
+                    <a href="#settings"><i class="fas fa-cog"></i> Settings</a>
+                </li>
+            </ul>
+
+            <div class="user-profile" id="userProfile">
+                <img src="" alt="User" id="userAvatar">
+                <div class="user-info">
+                    <p class="user-name" id="userName">Loading...</p>
+                    <p class="user-email" id="userEmail"></p>
+                </div>
+                <button class="btn-logout" onclick="logout()" title="Logout">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-title">
+                    <h1 id="pageTitle">Dashboard</h1>
+                    <p id="pageDescription">Monitorer et contrôler vos imprimantes 3D</p>
+                </div>
+                <!-- MQTT dot hidden in header, kept for JS compat -->
+                <div id="connectionStatus" style="display:none;">
+                    <span class="status-dot"></span>
+                </div>
+            </header>
+
+            <!-- Page Content Container -->
+            <div id="pageContentContainer" class="page-content-container">
+
+                <!-- DASHBOARD PAGE -->
+                <div id="dashboard-section" class="page-content active-page">
+                    <!-- Multi-Printer Tabs (max 3) -->
+                    <div class="printer-tabs-bar">
+                        <div class="printer-tabs" id="printerTabs">
+                            <div class="printer-tab-empty">
+                                <i class="fas fa-spinner fa-spin"></i> Chargement...
+                            </div>
+                        </div>
+                        <button class="btn-add-printer" onclick="showAddPrinterModal()" title="Ajouter">
+                            <i class="fas fa-plus"></i> Ajouter
+                        </button>
+                    </div>
+                    <!-- Hidden select kept for JS compatibility -->
+                    <select id="printerSelect" style="display:none;" onchange="changePrinter(this.value)">
+                        <option value="">Select Printer</option>
+                    </select>
+
+
+                    <!-- Barre de progression — IDs requis par mqtt.js -->
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-header">
+                            <span><i class="fas fa-print" style="margin-right:6px;"></i>Print Progress</span>
+                            <span id="printProgressPct" style="font-weight:600;">--%</span>
+                        </div>
+                        <div class="progress-bar-track">
+                            <div class="progress-bar-fill" id="progressBarFill" style="width:0%"></div>
+                        </div>
+                        <div class="progress-bar-footer">
+                            <span id="printStatusBadge" class="status-badge-small">Idle</span>
+                            <span style="font-size:13px;color:#666;">
+                                Time left: <strong id="timeLeftCard">--:--</strong>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon blue"><i class="fas fa-thermometer-half"></i></div>
+                            <div class="stat-info">
+                                <h3>Hotend</h3>
+                                <p id="hotendTemp">--°C</p>
+                                <span id="hotendTarget">Target: --°C</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon orange"><i class="fas fa-bed"></i></div>
+                            <div class="stat-info">
+                                <h3>Bed</h3>
+                                <p id="bedTemp">--°C</p>
+                                <span id="bedTarget">Target: --°C</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon green"><i class="fas fa-chart-line"></i></div>
+                            <div class="stat-info">
+                                <h3>Progress</h3>
+                                <p id="printProgress">--%</p>
+                                <span id="timeLeft">--:--</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon purple"><i class="fas fa-clock"></i></div>
+                            <div class="stat-info">
+                                <h3>Print Time</h3>
+                                <p id="printTime">--h --m</p>
+                                <span id="printStatus">Unknown</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chart-container">
+                        <canvas id="tempChart"></canvas>
+                    </div>
+
+                    <div class="control-panel">
+                        <h2>Quick Controls</h2>
+                        <div class="control-grid">
+                            <button class="control-btn primary" onclick="sendCommand('start')">
+                                <i class="fas fa-play"></i> Start
+                            </button>
+                            <button class="control-btn warning" onclick="sendCommand('pause')">
+                                <i class="fas fa-pause"></i> Pause
+                            </button>
+                            <button class="control-btn danger" onclick="sendCommand('cancel')">
+                                <i class="fas fa-stop"></i> Stop
+                            </button>
+                            <button class="control-btn" onclick="sendCommand('home')">
+                                <i class="fas fa-home"></i> Home
+                            </button>
+                            <button class="control-btn info" onclick="sendCommand('resume')">
+                                <i class="fas fa-play-circle"></i> Resume
+                            </button>
+                        </div>
+
+                        <h3>Movement</h3>
+                        <div class="movement-step-selector">
+                            <label>Step:</label>
+                            <button class="step-btn" onclick="setMoveStep(this,0.1)">0.1mm</button>
+                            <button class="step-btn active" onclick="setMoveStep(this,10)">10mm</button>
+                            <button class="step-btn" onclick="setMoveStep(this,50)">50mm</button>
+                            <button class="step-btn" onclick="setMoveStep(this,100)">100mm</button>
+                        </div>
+                        <div class="movement-layout">
+                            <div class="movement-xy">
+                                <div class="movement-grid-cross">
+                                    <div></div>
+                                    <button class="move-btn" onclick="moveWithStep('y',1)" title="Y+"><i class="fas fa-arrow-up"></i><br><small>Y+</small></button>
+                                    <div></div>
+                                    <button class="move-btn" onclick="moveWithStep('x',-1)" title="X-"><i class="fas fa-arrow-left"></i><br><small>X-</small></button>
+                                    <button class="move-btn move-home-btn" onclick="cmdHomePrinter()" title="Home XY"><i class="fas fa-crosshairs"></i></button>
+                                    <button class="move-btn" onclick="moveWithStep('x',1)" title="X+"><i class="fas fa-arrow-right"></i><br><small>X+</small></button>
+                                    <div></div>
+                                    <button class="move-btn" onclick="moveWithStep('y',-1)" title="Y-"><i class="fas fa-arrow-down"></i><br><small>Y-</small></button>
+                                    <div></div>
+                                </div>
+                                <p style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">X / Y</p>
+                            </div>
+                            <div class="movement-z">
+                                <button class="move-btn" onclick="moveWithStep('z',1)" title="Z+"><i class="fas fa-arrow-up"></i><br><small>Z+</small></button>
+                                <button class="move-btn move-home-btn" onclick="homeZAxis()" title="Home Z"><i class="fas fa-home" style="font-size:11px;"></i></button>
+                                <button class="move-btn" onclick="moveWithStep('z',-1)" title="Z-"><i class="fas fa-arrow-down"></i><br><small>Z-</small></button>
+                                <p style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">Z</p>
+                            </div>
+                        </div>
+
+                        <h3>Temperature</h3>
+                        <div class="temp-controls">
+                            <div class="temp-input">
+                                <label>Hotend:</label>
+                                <input type="number" id="hotendSetTemp" value="200" min="0" max="300">
+                                <button onclick="setTemp('tool0', document.getElementById('hotendSetTemp').value)">Set</button>
+                            </div>
+                            <div class="temp-input">
+                                <label>Bed:</label>
+                                <input type="number" id="bedSetTemp" value="60" min="0" max="120">
+                                <button onclick="setTemp('bed', document.getElementById('bedSetTemp').value)">Set</button>
+                            </div>
+                        </div>
+
+                        <h3>Extruder Control</h3>
+                        <div class="extruder-controls">
+                            <div class="extruder-step-selector">
+                                <label>Distance:</label>
+                                <button class="step-btn" onclick="setExtruderStep(this, 1)">1mm</button>
+                                <button class="step-btn active" onclick="setExtruderStep(this, 5)">5mm</button>
+                                <button class="step-btn" onclick="setExtruderStep(this, 10)">10mm</button>
+                                <button class="step-btn" onclick="setExtruderStep(this, 25)">25mm</button>
+                            </div>
+                            <div class="extruder-buttons">
+                                <button class="control-btn success" onclick="controlExtruder('extrude')">
+                                    <i class="fas fa-arrow-down"></i> Extrude
+                                </button>
+                                <button class="control-btn danger" onclick="controlExtruder('retract')">
+                                    <i class="fas fa-arrow-up"></i> Retract
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- END DASHBOARD -->
+
+                <!-- PRINTERS SECTION -->
+                <div id="printers-section" class="page-content" style="display:none;">
+                    <div id="printersGrid" class="printers-grid"></div>
+                </div>
+
+                <!-- FILES SECTION -->
+                <div id="files-section" class="page-content" style="display:none;">
+                    <div id="fileGrid" class="file-grid"></div>
+                </div>
+
+                <!-- HISTORY SECTION -->
+                <div id="history-section" class="page-content" style="display:none;">
+                    <div id="historyList" class="history-list"></div>
+                </div>
+
+                <!-- SETTINGS SECTION -->
+                <div id="settings-section" class="page-content" style="display:none;">
+                    <div id="settingsPanel" class="settings-panel"></div>
+                </div>
+
+            </div>
+            <!-- END pageContentContainer -->
+
+        </main>
+    </div>
+
+    <!-- Add Printer Modal -->
+    <div id="addPrinterModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2>Add New Printer</h2>
+            <form id="addPrinterForm" onsubmit="submitAddPrinter(event)">
+                <div class="form-group">
+                    <label>Printer Name</label>
+                    <input type="text" id="printerName" placeholder="My Ender 3" required>
+                </div>
+                <div class="form-group">
+                    <label>OctoPrint URL</label>
+                    <input type="url" id="printerUrl" placeholder="http://10.228.148.197" required>
+                </div>
+                <div class="form-group">
+                    <label>API Key</label>
+                    <input type="password" id="apiKey" placeholder="Your OctoPrint API Key" required>
+                </div>
+                <div class="form-group">
+                    <label>MQTT Topic Prefix</label>
+                    <input type="text" id="mqttTopic" value="octoPrint" placeholder="octoPrint">
+                </div>
+                <div class="form-group">
+                    <label>MQTT Broker Host
+                        <small style="color:#888;font-weight:normal;"> (IP du Pi — même que OctoPrint)</small>
+                    </label>
+                    <input type="text" id="mqttHost" value="10.228.148.197" placeholder="10.228.148.197">
+                </div>
+                <div class="form-group">
+                    <label>MQTT WebSocket Port <small style="color:#888;font-weight:normal;">(9001)</small></label>
+                    <input type="number" id="mqttPort" value="9001">
+                </div>
+                <button type="submit" class="btn-submit">Add Printer</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification container -->
+    <div id="notificationContainer" style="position:fixed;top:20px;right:20px;z-index:9999;"></div>
+
+    <!-- PWA Install Banner (Android) -->
+    <div id="installBanner" style="
+        display: none;
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        padding: 16px 20px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        z-index: 9998;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
+        flex-wrap: wrap;
+    ">
+        <div style="display:flex;align-items:center;gap:12px;">
+            <img src="icons/icon-72x72.png" width="44" height="44" style="border-radius:10px;" alt="RCI3D">
+            <div>
+                <strong style="font-size:15px;">Install RCI3D</strong>
+                <p style="font-size:12px;opacity:0.85;margin:2px 0 0;">Add to home screen for quick access</p>
+            </div>
+        </div>
+        <div style="display:flex;gap:10px;">
+            <button onclick="hideInstallBanner()" style="
+                padding: 8px 16px;
+                background: rgba(255,255,255,0.2);
+                color: white;
+                border: none;
+                border-radius: 20px;
+                cursor: pointer;
+                font-size: 13px;
+            ">Not now</button>
+            <button onclick="installApp()" style="
+                padding: 8px 20px;
+                background: white;
+                color: #667eea;
+                border: none;
+                border-radius: 20px;
+                cursor: pointer;
+                font-weight: 700;
+                font-size: 13px;
+            ">Install</button>
+        </div>
+    </div>
+
+    <!-- App Scripts LAST (after DOM) -->
+    <script src="auth.js"></script>
+    <script src="script.js"></script>
+    <script src="mqtt.js"></script>
+
+    <!-- Helpers pour mouvement + step selector -->
+    <script>
+    var currentMoveStep = 10;
+    function setMoveStep(btn, val) {
+        currentMoveStep = val;
+        document.querySelectorAll('.step-btn').forEach(function(b){ b.classList.remove('active'); });
+        btn.classList.add('active');
+    }
+    function moveWithStep(axis, dir) {
+        if (!window.currentPrinter) { window.showNotification && window.showNotification('Sélectionne une imprimante', 'warning'); return; }
+        var dist = dir * currentMoveStep;
+        if (typeof window.cmdMove === 'function') { window.cmdMove(axis, dist); }
+    }
+    function homeZAxis() {
+        if (!window.currentPrinter) { window.showNotification && window.showNotification('Sélectionne une imprimante', 'warning'); return; }
+        if (typeof window.octoPrintCommand === 'function') {
+            window.octoPrintCommand('/api/printer/printhead', 'POST', { command: 'home', axes: ['z'] });
+            window.showNotification && window.showNotification('Homing Z...', 'info');
+        }
+    }
+    window.setMoveStep  = setMoveStep;
+    window.moveWithStep = moveWithStep;
+    window.homeZAxis    = homeZAxis;
+    </script>
+
+    <!-- PWA Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(function(reg) {
+                        console.log('✅ Service Worker registered:', reg.scope);
+                        reg.addEventListener('updatefound', () => {
+                            const newWorker = reg.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    if (typeof showNotification === 'function') {
+                                        showNotification('Update available! Refresh to update.', 'info');
+                                    }
+                                }
+                            });
+                        });
+                    })
+                    .catch(function(err) {
+                        console.warn('⚠️ Service Worker failed:', err);
+                    });
+            });
+        }
+
+        // Android Chrome install prompt
+        let deferredPrompt = null;
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            setTimeout(showInstallBanner, 4000);
+        });
+
+        window.addEventListener('appinstalled', () => {
+            deferredPrompt = null;
+            hideInstallBanner();
+        });
+
+        function showInstallBanner() {
+            if (window.matchMedia('(display-mode: standalone)').matches) return;
+            if (!deferredPrompt) return;
+            const b = document.getElementById('installBanner');
+            if (b) b.style.display = 'flex';
+        }
+
+        function hideInstallBanner() {
+            const b = document.getElementById('installBanner');
+            if (b) b.style.display = 'none';
+        }
+
+        function installApp() {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then(() => {
+                deferredPrompt = null;
+                hideInstallBanner();
+            });
+        }
+
+        window.installApp        = installApp;
+        window.hideInstallBanner = hideInstallBanner;
+    </script>
+
+</body>
+</html>
